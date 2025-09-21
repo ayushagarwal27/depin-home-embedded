@@ -6,25 +6,28 @@
 #include "SolanaUtils.h"
 #include <time.h>
 
-const char *ssid = "aa";
-const char *password = "ggam0015";
+const char *ssid = "";
+const char *password = "";
 
 // Solana RPC URL (Devnet)
 const String solanaRpcUrl = "https://api.devnet.solana.com"; // or mainnet/testnet
 
 // Your Solana wallet (Base58 format)
-const String PRIVATE_KEY_BASE58 = "PRIVATE_KEY_BASE58"; // 64-byte base58
 const String PUBLIC_KEY_BASE58 = "AHYic562KhgtAEkb1rSesqS87dFYRcfXb4WwWus3Zc9C";
 
-const String PROGRAM_ID = "3iVjkQPbzHRfNGqzkrNBfE1m2TJYWQbycCMPukrdk6pP";
-const String MINT = "8MaXvmTFewPTD2oQoxjiCYPDU3BmvhZSHo5RBAi41Fek";
-const String VAULT = "7yjCjijhaK7pqC21rwuzmwKaG9B6horHa4qzALHjjGZz";
-const String TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+/**
+ * Not required rn
+ */
+// const String PRIVATE_KEY_BASE58 = "PRIVATE_KEY_BASE58"; // 64-byte base58
+// const String PROGRAM_ID = "3iVjkQPbzHRfNGqzkrNBfE1m2TJYWQbycCMPukrdk6pP";
+// const String MINT = "8MaXvmTFewPTD2oQoxjiCYPDU3BmvhZSHo5RBAi41Fek";
+// const String VAULT = "7yjCjijhaK7pqC21rwuzmwKaG9B6horHa4qzALHjjGZz";
+// const String TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 // Initialize Solana Library
 IoTxChain solana(solanaRpcUrl);
 
-#define DHT11PIN 6
+#define DHT11PIN 26
 #define DHTTYPE DHT11
 
 DHT dht(DHT11PIN, DHTTYPE);
@@ -73,11 +76,10 @@ void setup()
   pinMode(2, OUTPUT);
 
   // Initialize DHT sensor
-  // dht.begin();
+  dht.begin();
+  delay(2000);
 
-  getSolBalance();
-
-  // calculateDiscriminator("transfer_to_vault");
+  // getSolBalance();
   Serial.println("Setup complete.");
 }
 
@@ -95,7 +97,7 @@ void loop()
   Serial.println("LED OFF");
 
   // Check if it's time to send temperature
-  // checkAndSendTemp();
+  checkAndSendTemp();
 
   // Wait for 10 seconds before next check
   delay(10000); // Check every 10 seconds instead of every 2 seconds
@@ -142,7 +144,7 @@ void setupTime()
 
 void checkAndSendTemp()
 {
-  // Get current time
+  // // Get current time
   if (!getLocalTime(&timeinfo))
   {
     Serial.println("Failed to obtain time");
@@ -152,7 +154,7 @@ void checkAndSendTemp()
   int currentHour = timeinfo.tm_hour;
   int currentDay = timeinfo.tm_mday;
 
-  // Check if it's a new day - reset flags
+  // // Check if it's a new day - reset flags
   if (currentDay != lastDay)
   {
     resetDailyFlags();
@@ -160,7 +162,7 @@ void checkAndSendTemp()
     Serial.println("New day detected - resetting temperature reading flags");
   }
 
-  // Check for morning reading (8:00 AM)
+  // // Check for morning reading (8:00 AM)
   if (currentHour >= MORNING_HOUR && !morningDone)
   {
     Serial.println("=== MORNING TEMPERATURE READING ===");
@@ -178,9 +180,9 @@ void checkAndSendTemp()
   else if (currentHour >= NIGHT_HOUR && !nightDone)
   {
     Serial.println("=== NIGHT TEMPERATURE READING ===");
-    readAndSendTemperature();
     nightDone = true;
   }
+  readAndSendTemperature();
 
   // Print current status
   Serial.print("Current time: ");
@@ -199,6 +201,10 @@ void readAndSendTemperature()
   float h = dht.readHumidity();
   float t = dht.readTemperature();
   float f = dht.readTemperature(true);
+
+  Serial.println(h);
+  Serial.println(t);
+  Serial.println(f);
 
   // Check if any reads failed
   if (isnan(h) || isnan(t) || isnan(f))
@@ -223,12 +229,12 @@ void readAndSendTemperature()
   Serial.print(hif);
   Serial.println(F("°F"));
 
-  // Send temperature to blockchain
-  setTemp(t);
+  // Send temperature to backend
+  // setTemp(20);
 
-  Serial.print("Temperature ");
-  Serial.print(t);
-  Serial.println("°C sent to blockchain!");
+  // Serial.print("Temperature ");
+  // Serial.print(t);
+  // Serial.println("°C sent to backend!");
 }
 
 void resetDailyFlags()
@@ -240,14 +246,4 @@ void resetDailyFlags()
 
 void setTemp(float temperature)
 {
-  Serial.println("\n=== 🔹 setTemp() ===");
-  std::vector<std::vector<uint8_t>> seeds = {
-      {'t', 'e', 'm', 'p'},
-      base58ToPubkey(PUBLIC_KEY_BASE58)};
-
-  // Prepare payload (temperature as float32 little-endian)
-  std::vector<uint8_t> payload(4);
-  memcpy(payload.data(), &temperature, sizeof(float));
-
-  sendAnchorInstructionWithPDA(String("set_temp"), seeds, payload);
 }
