@@ -1,36 +1,23 @@
 #include "pins_arduino.h"
 #include <Arduino.h>
+#include <WiFiManager.h> // tzapu WiFiManager library
+#include <HTTPClient.h>
 #include <DHT.h>
-#include <WiFi.h>
-#include "IoTxChain-lib.h"
-#include "SolanaUtils.h"
-#include <time.h>
-
-const char *ssid = "";
-const char *password = "";
-
-// Solana RPC URL (Devnet)
-const String solanaRpcUrl = "https://api.devnet.solana.com"; // or mainnet/testnet
 
 // Your Solana wallet (Base58 format)
 const String PUBLIC_KEY_BASE58 = "AHYic562KhgtAEkb1rSesqS87dFYRcfXb4WwWus3Zc9C";
 
-/**
- * Not required rn
- */
-// const String PRIVATE_KEY_BASE58 = "PRIVATE_KEY_BASE58"; // 64-byte base58
-// const String PROGRAM_ID = "3iVjkQPbzHRfNGqzkrNBfE1m2TJYWQbycCMPukrdk6pP";
-// const String MINT = "8MaXvmTFewPTD2oQoxjiCYPDU3BmvhZSHo5RBAi41Fek";
-// const String VAULT = "7yjCjijhaK7pqC21rwuzmwKaG9B6horHa4qzALHjjGZz";
-// const String TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-
-// Initialize Solana Library
-IoTxChain solana(solanaRpcUrl);
-
-#define DHT11PIN 26
+// -------------------- DHT SETUP --------------------
+#define DHTPIN 26 // GPIO for DHT11
 #define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
 
-DHT dht(DHT11PIN, DHTTYPE);
+// -------------------- SERVER --------------------
+const char *serverUrl = "http://<YOUR_SERVER_IP>:3000/api/data"; // change this!
+
+// -------------------- FUNCTIONS --------------------
+void connectWiFiManager();
+void readAndSendTemperature();
 
 // Time tracking variables
 struct tm timeinfo;
@@ -66,10 +53,9 @@ void setup()
   delay(1000);
 
   // Print startup message
-  Serial.println("Arduino Nano ESP32 Example");
+  Serial.println("Booting...");
   Serial.println("Built-in LED will start blinking...");
 
-  connectToWiFi();
   setupTime();
 
   // Configure the LED pin as an output
@@ -77,7 +63,10 @@ void setup()
 
   // Initialize DHT sensor
   dht.begin();
-  delay(2000);
+  delay(1000);
+
+  // Start WiFiManager (AutoConnect portal if not connected)
+  connectWiFiManager();
 
   // getSolBalance();
   Serial.println("Setup complete.");
@@ -96,30 +85,35 @@ void loop()
   digitalWrite(2, LOW);
   Serial.println("LED OFF");
 
-  // Check if it's time to send temperature
-  checkAndSendTemp();
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    // Check if it's time to send temperature
+    checkAndSendTemp();
+  }
+  else
+  {
+    Serial.println("WiFi lost! Re-entering WiFiManager...");
+    connectWiFiManager();
+  }
 
   // Wait for 10 seconds before next check
   delay(10000); // Check every 10 seconds instead of every 2 seconds
 }
 
-void connectToWiFi()
+// -------------------- WIFI MANAGER --------------------
+void connectWiFiManager()
 {
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
+  WiFiManager wm;
 
-  // Connect to Wi-Fi network
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED)
+  // Try to connect, else start AP named "ESP32-Setup"
+  if (!wm.autoConnect("ESP32-Setup"))
   {
-    delay(500);
-    Serial.print(".");
+    Serial.println("Failed to connect and hit timeout");
+    ESP.restart(); // reboot if failed
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected.");
-  Serial.print("IP address: ");
+  Serial.println("WiFi connected!");
+  Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 }
 
@@ -230,11 +224,32 @@ void readAndSendTemperature()
   Serial.println(F("°F"));
 
   // Send temperature to backend
-  // setTemp(20);
+  // Build JSON payload
+  String jsonPayload = "{\"temp\":" + String(t) + ",\"humidity\":" + String(h) + "}";
 
-  // Serial.print("Temperature ");
-  // Serial.print(t);
-  // Serial.println("°C sent to backend!");
+  HTTPClient http;
+  http.begin(serverUrl);
+  http.addHeader("Content-Type", "application/json");
+
+  int httpResponseCode = http.POST(jsonPayload);
+
+  if (httpResponseCode > 0)
+  {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    Serial.println("Response: " + http.getString());
+  }
+  else
+  {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+
+  http.end();
+
+  Serial.print("Temperature ");
+  Serial.print(t);
+  Serial.println("°C sent to backend!");
 }
 
 void resetDailyFlags()
@@ -242,8 +257,4 @@ void resetDailyFlags()
   morningDone = false;
   afternoonDone = false;
   nightDone = false;
-}
-
-void setTemp(float temperature)
-{
 }
